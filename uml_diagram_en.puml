@@ -1,0 +1,141 @@
+@startuml
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+
+package "Domain (Entities)" #FFEEBB {
+  class Order {
+    - id: int
+    - subscriberId: int
+    - orderDate: LocalDateTime
+    - deliveryAddress: String
+    - lines: List<OrderLine>
+    - totalPrice: double
+    --
+    - calculateTotalPrice(): double
+    + getLines(): List<OrderLine> {unmodifiable}
+  }
+
+  class OrderLine {
+    - menuId: int
+    - menuName: String
+    - quantity: int
+    - unitPrice: double
+    - linePrice: double
+  }
+
+  class Menu {
+    - id: int
+    - name: String
+    - totalPrice: double
+  }
+
+  class Subscriber {
+    - id: int
+    - lastName: String
+    - firstName: String
+  }
+
+  Order *-- "1..*" OrderLine : contains >
+  note on link : Composition\n(strict lifecycle)
+}
+
+package "Application (Use Cases)" #CCFFCC {
+  class CreateOrderUseCase <<Interactor>> {
+    + execute(command): Order
+    - validateCommand(command): void
+  }
+
+  class CreateOrderCommand <<Input Data>> {
+    - subscriberId: int
+    - deliveryAddress: String
+    - menuIds: List<Integer>
+    - quantities: List<Integer>
+  }
+}
+
+package "Application (Ports)" #CCFFCC {
+  interface OrderInputBoundary <<Input Boundary>> {
+    + execute(command): Order
+  }
+
+  interface MenuClientPort <<Gateway output>> {
+    + getMenuById(menuId: int): Menu
+  }
+
+  interface SubscriberGateway <<Gateway output>> {
+    + findSubscriberById(subscriberId: int): Subscriber
+  }
+
+  interface OrderRepositoryGateway <<Repository output>> {
+    + generateNewId(): int
+    + save(order: Order): Order
+  }
+}
+
+
+package "Interface Adapters (In)" #BBDDFF {
+  class OrderController <<REST>> {
+    - useCase: OrderInputBoundary
+    + createOrder(request: OrderRequest): Response
+  }
+
+  class OrderMapper {
+    + {static} toCommand(request): CreateOrderCommand
+    + {static} toResponse(order): OrderResponse
+  }
+}
+
+package "Interface Adapters (Out)" #BBDDFF {
+  class MenuClientAdapter {
+    - baseUrl: String
+    + getMenuById(menuId: int): Menu
+  }
+
+  class SubscriberHttpGateway {
+    - baseUrl: String
+    + findSubscriberById(subscriberId: int): Subscriber
+  }
+
+  class OrderRepositoryAdapter {
+    + generateNewId(): int
+    + save(order: Order): Order
+  }
+}
+
+package "DTOs" #FFD4D4 {
+  class OrderRequest
+  class OrderResponse
+  class ErrorResponse
+}
+
+package "Exceptions" #FFD4D4 {
+  class InvalidOrderException
+  class MenuNotFoundException
+  class SubscriberNotFoundException
+}
+
+' Use Case implements Input Boundary
+CreateOrderUseCase ..|> OrderInputBoundary
+
+' Use Case depends on Gateways
+CreateOrderUseCase --> MenuClientPort : uses
+CreateOrderUseCase --> SubscriberGateway : uses
+CreateOrderUseCase --> OrderRepositoryGateway : uses
+CreateOrderUseCase ..> CreateOrderCommand : receives
+CreateOrderUseCase ..> Order : creates
+CreateOrderUseCase ..> OrderLine : creates
+
+' Adapters implement Ports
+MenuClientAdapter ..|> MenuClientPort
+SubscriberHttpGateway ..|> SubscriberGateway
+OrderRepositoryAdapter ..|> OrderRepositoryGateway
+
+' Controller dependencies
+OrderController --> OrderInputBoundary : injects
+OrderController ..> OrderMapper : uses
+OrderMapper ..> OrderRequest : reads
+OrderMapper ..> OrderResponse : creates
+OrderMapper ..> CreateOrderCommand : creates
+OrderMapper ..> Order : reads
+
+@enduml
